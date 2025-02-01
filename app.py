@@ -13,7 +13,7 @@ import seaborn as sns
 
 st.set_page_config(
     page_title="Advanced Stock Analysis Dashboard",
-    page_icon="📈",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -26,11 +26,17 @@ st.markdown("""
         width: 100%;
         border-radius: 5px;
         height: 3em;
-        background-color: #4CAF50;
-        color: white;
+        background-color: white;
+        color: #1e1e1e;
+        border: 1px solid #e1e4e8;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #f5f5f5;
+        border-color: #d1d1d1;
     }
     .stTextInput>div>div>input {
-        color: #4CAF50;
+        color: #1e1e1e;
     }
     .highlight {
         border-radius: 0.4rem;
@@ -50,13 +56,39 @@ st.markdown("""
         padding: 1rem;
         margin: 0.5rem 0;
         background-color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .metric-card h4 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: #1e1e1e;
+    }
+    .metric-card p {
+        margin: 0;
+        font-size: 1rem;
+        color: #555;
+    }
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
+        color: #1e1e1e;
+    }
+    .stMarkdown p {
+        color: #555;
+    }
+    .stSidebar {
+        background-color: #f8f9fa;
+    }
+    .stSidebar .stMarkdown h1, .stSidebar .stMarkdown h2, .stSidebar .stMarkdown h3 {
+        color: #1e1e1e;
+    }
+    .stSidebar .stMarkdown p {
+        color: #555;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.title("📊 Configuration")
+    st.title("Configuration")
     st.subheader("Time Period")
     start_date = st.date_input(
         "Start Date",
@@ -86,13 +118,13 @@ with st.sidebar:
         help="Select moving average periods to display"
     )
 
-st.title("📈 Advanced Stock Analysis Dashboard")
-st.markdown("""
-    <div class='highlight' style='background-color: #1e1e1e;'>
-    <h4 style='margin:0;'>Warren Buffett's Wisdom:</h4>
-    <i>"Be fearful when others are greedy and be greedy when others are fearful."</i>
-    </div>
-    """, unsafe_allow_html=True)
+st.title("Advanced Stock Analysis Dashboard")
+# st.markdown("""
+#     <div class='highlight' style='background-color: #1e1e1e;'>
+#     <h4 style='margin:0;'>Warren Buffett's Wisdom:</h4>
+#     <i>"Be fearful when others are greedy and be greedy when others are fearful."</i>
+#     </div>
+#     """, unsafe_allow_html=True)
 
 # Stock selection
 col1, col2 = st.columns([2, 1])
