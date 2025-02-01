@@ -1,187 +1,323 @@
-# Import necessary libraries
-import yfinance as yf
-from datetime import date
 import streamlit as st
+import yfinance as yf
+import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+from datetime import date, timedelta
+import plotly.express as px
+from PIL import Image
+import requests
+from io import BytesIO
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-st.set_page_config(page_title='Stock the Stock', page_icon='📈')
+st.set_page_config(
+    page_title="Advanced Stock Analysis Dashboard",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+st.markdown("""
+    <style>
+    .main {
+        padding: 0rem 1rem;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #4CAF50;
+        color: white;
+    }
+    .stTextInput>div>div>input {
+        color: #4CAF50;
+    }
+    .highlight {
+        border-radius: 0.4rem;
+        color: white;
+        padding: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .css-1d391kg {
+        padding: 1rem 1rem 1.5rem;
+    }
+    .css-12oz5g7 {
+        padding: 1rem 1rem 1.5rem;
+    }
+    .metric-card {
+        border: 1px solid #e1e4e8;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        background-color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# Function to calculate the average of a list of numbers
-def calculate_average(numbers):
-    if not numbers:
-        return None
-    return sum(numbers) / len(numbers)
+# Sidebar
+with st.sidebar:
+    st.title("📊 Configuration")
+    st.subheader("Time Period")
+    start_date = st.date_input(
+        "Start Date",
+        value=date.today() - timedelta(days=365),
+        min_value=date(1980, 1, 1),
+        max_value=date.today()
+    )
+    end_date = st.date_input(
+        "End Date",
+        value=date.today(),
+        min_value=date(1980, 1, 1),
+        max_value=date.today()
+    )
+    st.subheader("Analysis Parameters")
+    percent_threshold = st.slider(
+        "Market Movement Threshold (%)",
+        min_value=5,
+        max_value=40,
+        value=20,
+        help="Percentage change threshold for identifying significant market movements"
+    )
+    
+    ma_periods = st.multiselect(
+        "Moving Averages",
+        options=[20, 50, 100, 200],
+        default=[50, 200],
+        help="Select moving average periods to display"
+    )
 
-# Define the BSE Sensex ticker
-bse_sensex = yf.Ticker("^BSESN")
+st.title("📈 Advanced Stock Analysis Dashboard")
+st.markdown("""
+    <div class='highlight' style='background-color: #1e1e1e;'>
+    <h4 style='margin:0;'>Warren Buffett's Wisdom:</h4>
+    <i>"Be fearful when others are greedy and be greedy when others are fearful."</i>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Get historical data for BSE Sensex from the start date
-st.title("Stock the Stock")
-st.caption("📈 This app helps you to make better investment decisions by analyzing the historical data of the stock/index of your choice. It will ask to sell when the market is high and ask to buy when the market is low. This strategy is taken from the famous Warren Buffett's quote. 📉")
-
-st.markdown("> #### ***Be fearful when others are greedy and be greedy when others are fearful.***", unsafe_allow_html=True)
-
-st.caption("The graph has 3 colors of markers - red, green anf blue.")
-st.markdown("🔴**Red markers** represent the market falls.")
-st.markdown("🟢**Green markers** represent the market rises.")
-st.markdown("🟡**Yellow markers** represent the peaks.")
-
-# Allow user to select start and end dates
-st.markdown('## Select Start and End Dates')
-st.caption("Please enter the start and end dates for the analysis.")
-
-start_date = st.date_input("Start Date", value=date(1980, 1, 1))
-end_date = st.date_input("End Date", value=date.today())
-
-# Convert start and end dates to strings
-start_date_str = start_date.strftime("%Y-%m-%d")
-end_date_str = end_date.strftime("%Y-%m-%d")
-
-# Allow user to select stock/index
-st.markdown('## Select Stock/Index')
-st.caption("Please enter the stock/index you want to analyze.")
-# yahoo finance link
-st.markdown("Get Stock/Index codes from [Yahoo Finance](https://finance.yahoo.com/)")
-selected_stock = st.text_input("Stock Name", "^BSESN", label_visibility="hidden") # Allow user to enter text, default value is "^BSESN"
-
-col1, col2, col3, col4, col5, col6, col7 = st.columns(7)  # Create 7 columns
-
-# Place buttons in the columns
+# Stock selection
+col1, col2 = st.columns([2, 1])
 with col1:
-    if st.button("^BSEN") and selected_stock != "^BSESN":
-        selected_stock = "^BSESN"
+    selected_stock = st.text_input(
+        "Enter Stock Symbol",
+        value="AAPL",
+        help="Enter the stock symbol (e.g., AAPL for Apple)"
+    ).upper()
 
 with col2:
-    if st.button("AAPL"):
-        selected_stock = "AAPL"
+    st.markdown("<br>", unsafe_allow_html=True)  
+    analyze_button = st.button("Analyze Stock", type="primary")
 
-with col3:
-    if st.button("GOOG"):
-        selected_stock = "GOOG"
+popular_stocks = {
+    "AAPL": "Apple",
+    "GOOGL": "Google",
+    "MSFT": "Microsoft",
+    "AMZN": "Amazon",
+    "TSLA": "Tesla",
+    "META": "Meta"
+}
 
-with col4:
-    if st.button("^GSPC"):
-        selected_stock = "^GSPC"
+cols = st.columns(len(popular_stocks))
+for idx, (symbol, name) in enumerate(popular_stocks.items()):
+    with cols[idx]:
+        if st.button(f"{symbol}\n{name}"):
+            selected_stock = symbol
 
-with col5:
-    if st.button("NFLX"):
-        selected_stock = "NFLX"
+# Function to get stock data
+@st.cache_data(ttl=3600)  # Cache data for 1 hour
+def get_stock_data(symbol, start_date, end_date):
+    try:
+        stock = yf.Ticker(symbol)
+        df = stock.history(start=start_date, end=end_date)
+        if df.empty:
+            return None
+        
+        # Get basic info
+        info = {}
+        try:
+            stock_info = stock.info
+            info = {
+                'marketCap': stock_info.get('marketCap', 0),
+                'fiftyTwoWeekLow': stock_info.get('fiftyTwoWeekLow', 0),
+                'fiftyTwoWeekHigh': stock_info.get('fiftyTwoWeekHigh', 0)
+            }
+        except:
+            info = {
+                'marketCap': 0,
+                'fiftyTwoWeekLow': df['Low'].min(),
+                'fiftyTwoWeekHigh': df['High'].max()
+            }
+        
+        return {
+            'df': df,
+            'info': info
+        }
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+        return None
 
-with col6:
-    if st.button("META"):
-        selected_stock = "META"
+if analyze_button or selected_stock:
+    data_load = get_stock_data(selected_stock, start_date, end_date)
+    if data_load:
+        df = data_load['df']
+        info = data_load['info']
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Current Price",
+                f"${df['Close'][-1]:.2f}",
+                f"{((df['Close'][-1] - df['Close'][-2]) / df['Close'][-2] * 100):.2f}%"
+            )
+        with col2:
+            st.metric(
+                "Market Cap",
+                f"${info['marketCap'] / 1e9:.2f}B"
+            )
+        with col3:
+            st.metric(
+                "52 Week Range",
+                f"${info['fiftyTwoWeekLow']:.2f} - ${info['fiftyTwoWeekHigh']:.2f}"
+            )
 
-with col7:
-    if st.button("AMZN"):
-        selected_stock = "AMZN"
+        st.subheader("Technical Analysis")
+        
+        # Calculate moving averages
+        for period in ma_periods:
+            df[f'MA{period}'] = df['Close'].rolling(window=period).mean()
 
-# Define a percentage change threshold
-st.markdown('## Select the Percentage')
-st.caption("The percentage change threshold is used to determine the market fall and rise. The higher the percentage, the more the market has to fall/rise to be considered a fall/rise. 20% is recommended for most stocks.")
-percent = st.slider("Select Percentage",min_value=5,max_value=40,value=20, format="%d%%", label_visibility="hidden") # Allow user to select percentage from range 5-40
+        # Create interactive chart
+        fig = go.Figure()
+        
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name='OHLC'
+        ))
+        
+        for period in ma_periods:
+            fig.add_trace(go.Scatter(
+                x=df.index,
+                y=df[f'MA{period}'],
+                name=f'{period} Day MA',
+                line=dict(width=2)
+            ))
+        
+        # Update layout
+        fig.update_layout(
+            title=f'{selected_stock} Stock Price',
+            yaxis_title='Stock Price (USD)',
+            xaxis_title='Date',
+            template='plotly_dark',
+            height=600
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Market Analysis
+        st.subheader("Market Analysis")
+        
+        # Calculate peaks and troughs
+        df['Rolling_Max'] = df['Close'].rolling(window=20).max()
+        df['Rolling_Min'] = df['Close'].rolling(window=20).min()
+        
+        current_price = df['Close'][-1]
+        peak_price = df['Rolling_Max'][-1]
+        trough_price = df['Rolling_Min'][-1]
+        
+        # Market status
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### Market Status")
+            percent_from_peak = ((current_price - peak_price) / peak_price) * 100
+            
+            if percent_from_peak <= -percent_threshold:
+                st.markdown(f"""
+                    <div class='metric-card' style='border-left: 4px solid #4CAF50;'>
+                        <h4 style='color: #4CAF50; margin:0;'>BUY Signal</h4>
+                        <p>Market is down {abs(percent_from_peak):.2f}% from peak</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            elif percent_from_peak >= percent_threshold:
+                st.markdown(f"""
+                    <div class='metric-card' style='border-left: 4px solid #f44336;'>
+                        <h4 style='color: #f44336; margin:0;'>SELL Signal</h4>
+                        <p>Market is up {percent_from_peak:.2f}% from trough</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div class='metric-card' style='border-left: 4px solid #FFA500;'>
+                        <h4 style='color: #FFA500; margin:0;'>HOLD Signal</h4>
+                        <p>Market is within normal range</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        with col2:
+            # Volatility analysis
+            st.markdown("### Volatility Analysis")
+            df['Daily_Return'] = df['Close'].pct_change()
+            volatility = df['Daily_Return'].std() * np.sqrt(252) * 100  # Annualized volatility
+            
+            st.markdown(f"""
+                <div class='metric-card'>
+                    <h4 style='margin:0;'>Annual Volatility</h4>
+                    <p style='font-size: 24px; margin:0;'>{volatility:.2f}%</p>
+                </div>
+                """, unsafe_allow_html=True)
 
-# Initialize the ticker
-ticker = yf.Ticker(selected_stock)
+        # Volume Analysis
+        st.subheader("Volume Analysis")
+        
+        fig_volume = go.Figure()
+        fig_volume.add_trace(go.Bar(
+            x=df.index,
+            y=df['Volume'],
+            name='Volume'
+        ))
+        
+        fig_volume.update_layout(
+            title='Trading Volume',
+            yaxis_title='Volume',
+            xaxis_title='Date',
+            template='plotly_dark',
+            height=400
+        )
+        
+        st.plotly_chart(fig_volume, use_container_width=True)
 
-# Get historical data for the selected stock/index
-historical_data = ticker.history(start=start_date_str, end=end_date_str)
+        st.subheader("Risk Analysis")
+        
+        returns = df['Close'].pct_change()
+        
+        fig_dist = go.Figure()
+        fig_dist.add_trace(go.Histogram(
+            x=returns,
+            name='Returns Distribution',
+            nbinsx=50,
+            histnorm='probability'
+        ))
+        
+        fig_dist.update_layout(
+            title='Returns Distribution',
+            xaxis_title='Daily Returns',
+            yaxis_title='Probability',
+            template='plotly_dark',
+            height=400
+        )
+        
+        st.plotly_chart(fig_dist, use_container_width=True)
 
-# Initialize variables to track peaks and color plotting
-peaks = []
-fall_points = []
-rise_points = []
-color = 'grey'
-point = 0
-point_index = 0
-fallen = False
-returns = [] # list of returns
-buy_point = 0
+st.markdown("---")
+st.markdown("""
+    <div style='text-align: center;'>
+    <h4>📊 Advanced Stock Analysis Dashboard</h4>
+    <p>Disclaimer: This tool is for informational purposes only. Not financial advice.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Calculate peaks and market falls/rises
-for index, row in historical_data.iterrows():
-    # Access the data in each row using row['column_name']
-    # Perform necessary operations on the data
-    close = row['Close']
-    if(not fallen and close>point):
-        point=close
-        point_index=index
-    
-    # check if the fall happens
-    if(not fallen and close<=point*(1-percent/100)):
-        fall_points.append((index,close))
-        fallen=True
-        buy_point=close
-        # mark point on graph blue
-        peaks.append((point_index,point))
-
-    # check if the rise happens
-    if(fallen and close>=point*(1+percent/100)):
-        rise_points.append((index,close))
-        fallen=False
-        returns.append((close-buy_point)/buy_point)
-
-# Streamlit app
-st.markdown(f'## {selected_stock} Historical Data')
-st.caption("The historical data of the stock/index is plotted below.")
-
-# Plotting
-fig, ax = plt.subplots(figsize=(12, 6), facecolor='#f2f2f2')
-ax.plot(historical_data.index, historical_data['Close'], color=color)
-for pt, point_color in [(peaks, 'yellow'), (fall_points, 'red'), (rise_points, 'green')]:
-    if len(pt) > 0:
-        dates, closes = zip(*pt)
-        ax.scatter(dates, closes, color=point_color)
-
-ax.set_xlabel('Date', color='white')
-ax.set_ylabel('Closing Price', color='white')
-ax.tick_params(axis='x', colors='white')
-ax.tick_params(axis='y', colors='white')
-ax.set_facecolor('#f2f2f2')  # Set the background color to black
-st.pyplot(fig)
-
-st.markdown('## Buy-Hold-Sell Indicator')
-st.caption("The indicator shows whether you should buy, hold or sell the stock/index based on the current status of the market.")
-# check current status
-percentage_change = ((historical_data['Close'].iloc[-1] - peaks[-1][1]) / peaks[-1][1] * 100) if peaks else 0
-# Calculate the color gradient
-colors = np.linspace(0, 1, 100)
-color_map = plt.cm.RdYlGn(colors)
-
-# Calculate the position of the pointer
-if percentage_change >= 20:
-    pointer_position = 1  # Max sell
-    text_position = 0.95  # Position of the text "sell"
-elif percentage_change <= -20:
-    pointer_position = 0.00 # Max buy
-    text_position = 0.05  # Position of the text "buy"
-else:
-    pointer_position = (percentage_change + 20) / 40  # Linear interpolation between max buy and max sell
-    text_position = pointer_position  # Position of the text "hold"
-
-# Plot the buy-hold-sell bar with gradient color and pointer
-fig, ax = plt.subplots(figsize=(6, 0.5), facecolor='#f2f2f2')
-ax.imshow([color_map], aspect='auto', extent=(0, 1, 0, 1))
-ax.axvline(x=pointer_position, color='black', linewidth=2, ymin=-0.2, ymax=1.2, clip_on=False)
-ax.set_axis_off()
-
-# Add text labels
-ax.text(0.05, 0.5, 'Buy', transform=ax.transAxes, ha='left', va='center', color='white')
-ax.text(0.5, 0.5, 'Hold', transform=ax.transAxes, ha='center', va='center')
-ax.text(0.95, 0.5, 'Sell', transform=ax.transAxes, ha='right', va='center', color='white')
-ax.set_facecolor('#f2f2f2')  # Set the background color to black
-st.pyplot(fig)
-
-
-# display how much market is currently down from the max
-st.markdown('## Current Status')
-st.write("**Current value:** ", round(historical_data['Close'].iloc[-1], 2))
-st.write("**Peak:** ", round(point,2))
-st.write("**Down from peak:** ", round((historical_data['Close'].iloc[-1] - point) / point * 100, 2), "%")
-
-# line break
-st.divider()
-
-# display warning that we are not financial advisors
-st.markdown('### Disclaimer')
-st.warning("We are not financial advisors. This is just a tool to help you make better decisions. Please consult a financial advisor before making any investment decisions.")
+if st.button("Clear Cache"):
+    st.cache_data.clear()
+    st.success("Cache cleared!")

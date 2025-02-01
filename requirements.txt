@@ -3,3 +3,6 @@ matplotlib
 streamlit
 numpy
 datetime
+pillow 
+plotly 
+seaborn
